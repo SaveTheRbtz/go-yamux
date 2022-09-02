@@ -207,11 +207,10 @@ func (s *Stream) sendFlags() uint16 {
 	return flags
 }
 
-// sendWindowUpdate potentially sends a window update enabling
-// further writes to take place. Must be invoked with the lock.
-func (s *Stream) sendWindowUpdate() error {
-	// Determine the flags if any
-	flags := s.sendFlags()
+// getWindowUpdateHeader returns a header for a window update with the given flags.
+func (s *Stream) getWindowUpdateHeader(flags uint16) *header {
+	s.session.streamLock.Lock()
+	defer s.session.streamLock.Unlock()
 
 	// Update the receive window.
 	needed, delta := s.recvBuf.GrowTo(s.recvWindow, flags != 0)
@@ -239,7 +238,20 @@ func (s *Stream) sendWindowUpdate() error {
 
 	s.epochStart = now
 	hdr := encode(typeWindowUpdate, flags, s.id, delta)
-	return s.session.sendMsg(hdr, nil, nil)
+	return &hdr
+}
+
+// sendWindowUpdate potentially sends a window update enabling
+// further writes to take place. Must be invoked with the lock.
+func (s *Stream) sendWindowUpdate() error {
+	// Determine the flags if any
+	flags := s.sendFlags()
+
+	hdr := s.getWindowUpdateHeader(flags)
+	if hdr == nil {
+		return nil
+	}
+	return s.session.sendMsg(*hdr, nil, nil)
 }
 
 // sendClose is used to send a FIN
